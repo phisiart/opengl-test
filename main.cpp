@@ -1,38 +1,44 @@
+#include <string>
 #include <iostream>
+#include <fstream>
 #include <GLFW/glfw3.h>
 
-void GlfwErrorCallback(int err, const char* str)
-{
+void GlfwErrorCallback(int err, const char* str) {
   std::cerr << "Error: [" << err << "] " << str << std::endl;
 }
 
+// Don't need to change this.
+// We want to draw 2 giant triangles that cover the whole screen.
 struct Vertex {
   float x, y;
-  float r, g, b;
+};
+Vertex vertices[] = {
+    { -1.f, -1.f },
+    { 1.0f, -1.f },
+    { 1.0f, 1.0f },
+    { -1.f, -1.f },
+    { -1.f, 1.0f },
+    { 1.0f, 1.0f },
 };
 
-Vertex vertices[3] = {
-    { -0.6f, -0.4f, 1.f, 0.f, 0.f },
-    {  0.6f, -0.4f, 0.f, 1.f, 0.f },
-    {   0.f,  0.6f, 0.f, 0.f, 1.f }
-};
-
+// Don't need to change this.
+// The vertex shader only needs to take in the triangle points.
+// No need for point transformations.
 static const char* vertex_shader_text =
-    "uniform mat4 MVP;\n"
-    "attribute vec3 vCol;\n"
-    "attribute vec2 vPos;\n"
-    "varying vec3 color;\n"
+    "attribute vec2 point; // input to vertex shader\n"
     "void main()\n"
     "{\n"
-    "    gl_Position = MVP * vec4(vPos, 0.0, 1.0);\n"
-    "    color = vCol;\n"
+    "    gl_Position = vec4(point, 0.0, 1.0);\n"
     "}\n";
 
+// This is the main part.
 static const char* fragment_shader_text =
-    "varying vec3 color;\n"
+    "uniform int width;\n"
+    "uniform int height;\n"
     "void main()\n"
     "{\n"
-    "    gl_FragColor = vec4(color, 1.0);\n"
+    "    // TODO(zhixunt): Calculate pixel index.\n"
+    "    gl_FragColor = vec4(gl_FragCoord.x / float(width), gl_FragCoord.y / float(height), 0.0, 1.0)\n;"
     "}\n";
 
 int main(int argc, char *argv[]) {
@@ -48,8 +54,13 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  GLint width = 640;
+  GLint height = 480;
+
   // Create a window.
-  GLFWwindow *window = glfwCreateWindow(640, 480, "My Title", nullptr, nullptr);
+  // TODO(zhixunt): GLFW allows us to create an invisible window.
+  // TODO(zhixunt): On retina display, window size is different from framebuffer size.
+  GLFWwindow *window = glfwCreateWindow(width, height, "My Title", nullptr, nullptr);
   if (window == nullptr) {
     std::cout << "glfwCreateWindow() failed!" << std::endl;
     return 1;
@@ -58,59 +69,46 @@ int main(int argc, char *argv[]) {
   // Before using any OpenGL API, we must specify a context.
   glfwMakeContextCurrent(window);
 
+  // Create the vertex shader.
+  GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(vertex_shader, 1, &vertex_shader_text, nullptr);
+  glCompileShader(vertex_shader);
+
+  // Create the fragment shader.
+  GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(fragment_shader, 1, &fragment_shader_text, nullptr);
+  glCompileShader(fragment_shader);
+
+  // Combine the vertex and fragment shaders to create a "program".
+  GLuint program = glCreateProgram();
+  glAttachShader(program, vertex_shader);
+  glAttachShader(program, fragment_shader);
+  glLinkProgram(program);
+  glUseProgram(program);
+
   GLuint vertex_buffer;
   glGenBuffers(1, &vertex_buffer);
   glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-  GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vertex_shader, 1, &vertex_shader_text, nullptr);
-  glCompileShader(vertex_shader);
+  auto point_attrib = static_cast<GLuint>(glGetAttribLocation(program, "point"));
+  glEnableVertexAttribArray(point_attrib);
+  glVertexAttribPointer(point_attrib, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
 
-  GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragment_shader, 1, &fragment_shader_text, nullptr);
-  glCompileShader(fragment_shader);
+  glfwGetFramebufferSize(window, &width, &height);
+  auto width_uniform = glGetUniformLocation(program, "width");
+  auto height_uniform = glGetUniformLocation(program, "height");
+  glUniform1i(width_uniform, width);
+  glUniform1i(height_uniform, height);
+  glViewport(0, 0, width, height);
 
-  GLuint program = glCreateProgram();
-  glAttachShader(program, vertex_shader);
-  glAttachShader(program, fragment_shader);
-  glLinkProgram(program);
+  glClear(GL_COLOR_BUFFER_BIT);
 
-  auto mvp_location = static_cast<GLuint>(glGetUniformLocation(program, "MVP"));
-  auto vpos_location = static_cast<GLuint>(glGetAttribLocation(program, "vPos"));
-  auto vcol_location = static_cast<GLuint>(glGetAttribLocation(program, "vCol"));
+  glDrawArrays(GL_TRIANGLES, 0, 6);
 
-  glEnableVertexAttribArray(vpos_location);
-  glVertexAttribPointer(vpos_location, 2, GL_FLOAT, GL_FALSE,
-                        sizeof(float) * 5, (void*) 0);
-  glEnableVertexAttribArray(vcol_location);
-  glVertexAttribPointer(vcol_location, 3, GL_FLOAT, GL_FALSE,
-                        sizeof(float) * 5, (void*) (sizeof(float) * 2));
+  glfwSwapBuffers(window);
 
   while (glfwWindowShouldClose(window) == GLFW_FALSE) {
-    int width, height;
-
-    GLfloat mvp[16] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f
-    };
-
-    glfwGetFramebufferSize(window, &width, &height);
-
-    glViewport(0, 0, width, height);
-
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    glUseProgram(program);
-
-    glUniformMatrix4fv(mvp_location, 1, GL_FALSE, (const GLfloat*) mvp);
-
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-
-    glfwSwapBuffers(window);
-
     glfwPollEvents();
   }
 
