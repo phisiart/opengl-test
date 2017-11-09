@@ -3,6 +3,51 @@
 #include <fstream>
 #include <GLFW/glfw3.h>
 
+namespace gl {
+inline const char* GLGetErrorString(GLenum error) {
+  switch (error) {
+    case GL_NO_ERROR:
+      return "GL_NO_ERROR";
+    case GL_INVALID_ENUM:
+      return "GL_INVALID_ENUM";
+    case GL_INVALID_VALUE:
+      return "GL_INVALID_VALUE";
+    case GL_INVALID_OPERATION:
+      return "GL_INVALID_OPERATION";
+    case GL_STACK_OVERFLOW:
+      return "GL_STACK_OVERFLOW";
+    case GL_STACK_UNDERFLOW:
+      return "GL_STACK_UNDERFLOW";
+    case GL_OUT_OF_MEMORY:
+      return "GL_OUT_OF_MEMORY";
+    default:
+      return "Unknown OpenGL error code";
+  }
+}
+
+}  // namespace gl
+
+// TODO(zhixunt): When porting to TVM, change this to
+//   CHECK(err == GL_NO_ERROR) << ...;
+void OPENGL_CHECK_ERROR() {
+  GLenum err = glGetError();
+  if (err != GL_NO_ERROR) {
+    std::cerr << "OpenGL error, code=" << err << ": "
+              << gl::GLGetErrorString(err);
+    exit(1);
+  }
+}
+
+/*!
+ * \brief Protected OpenGL call.
+ * \param func Expression to call.
+ */
+#define OPENGL_CALL(func)                                             \
+  {                                                                   \
+    (func);                                                           \
+    OPENGL_CHECK_ERROR();                                             \
+  }
+
 void GlfwErrorCallback(int err, const char* str) {
   std::cerr << "Error: [" << err << "] " << str << std::endl;
 }
@@ -71,40 +116,40 @@ int main(int argc, char *argv[]) {
 
   // Create the vertex shader.
   GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vertex_shader, 1, &vertex_shader_text, nullptr);
+  OPENGL_CALL(glShaderSource(vertex_shader, 1, &vertex_shader_text, nullptr));
   glCompileShader(vertex_shader);
 
   // Create the fragment shader.
   GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragment_shader, 1, &fragment_shader_text, nullptr);
-  glCompileShader(fragment_shader);
+  OPENGL_CALL(glShaderSource(fragment_shader, 1, &fragment_shader_text, nullptr));
+  OPENGL_CALL(glCompileShader(fragment_shader));
 
   // Combine the vertex and fragment shaders to create a "program".
   GLuint program = glCreateProgram();
-  glAttachShader(program, vertex_shader);
-  glAttachShader(program, fragment_shader);
-  glLinkProgram(program);
-  glUseProgram(program);
+  OPENGL_CALL(glAttachShader(program, vertex_shader));
+  OPENGL_CALL(glAttachShader(program, fragment_shader));
+  OPENGL_CALL(glLinkProgram(program));
+  OPENGL_CALL(glUseProgram(program));
 
   GLuint vertex_buffer;
-  glGenBuffers(1, &vertex_buffer);
-  glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+  OPENGL_CALL(glGenBuffers(1, &vertex_buffer));
+  OPENGL_CALL(glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer));
+  OPENGL_CALL(glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW));
 
   auto point_attrib = static_cast<GLuint>(glGetAttribLocation(program, "point"));
-  glEnableVertexAttribArray(point_attrib);
-  glVertexAttribPointer(point_attrib, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
+  OPENGL_CALL(glEnableVertexAttribArray(point_attrib));
+  OPENGL_CALL(glVertexAttribPointer(point_attrib, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr));
 
   glfwGetFramebufferSize(window, &width, &height);
   auto width_uniform = glGetUniformLocation(program, "width");
   auto height_uniform = glGetUniformLocation(program, "height");
-  glUniform1i(width_uniform, width);
-  glUniform1i(height_uniform, height);
-  glViewport(0, 0, width, height);
+  OPENGL_CALL(glUniform1i(width_uniform, width));
+  OPENGL_CALL(glUniform1i(height_uniform, height));
+  OPENGL_CALL(glViewport(0, 0, width, height));
 
   glClear(GL_COLOR_BUFFER_BIT);
 
-  glDrawArrays(GL_TRIANGLES, 0, 6);
+  OPENGL_CALL(glDrawArrays(GL_TRIANGLES, 0, 6));
 
   glfwSwapBuffers(window);
 
