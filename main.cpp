@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <GLFW/glfw3.h>
+#include <cassert>>
 
 namespace gl {
 inline const char* GLGetErrorString(GLenum error) {
@@ -34,7 +35,7 @@ void OPENGL_CHECK_ERROR() {
   if (err != GL_NO_ERROR) {
     std::cerr << "OpenGL error, code=" << err << ": "
               << gl::GLGetErrorString(err);
-    exit(1);
+    assert(false);
   }
 }
 
@@ -80,10 +81,13 @@ static const char* vertex_shader_text =
 static const char* fragment_shader_text =
     "uniform int width;\n"
     "uniform int height;\n"
+    "uniform sampler1D texture0;\n"
+    "uniform sampler1D texture1;\n"
     "void main()\n"
     "{\n"
     "    // TODO(zhixunt): Calculate pixel index.\n"
-    "    gl_FragColor = vec4(gl_FragCoord.x / float(width), gl_FragCoord.y / float(height), 0.0, 1.0)\n;"
+    "    // gl_FragColor = vec4(gl_FragCoord.x / float(width), gl_FragCoord.y / float(height), 0.0, 1.0)\n;"
+    "    gl_FragColor = vec4(texture1D(texture0, 0.0).r + texture1D(texture1, 0.0).r, 0.0, 0.0, 1.0);\n"
     "}\n";
 
 int main(int argc, char *argv[]) {
@@ -146,6 +150,50 @@ int main(int argc, char *argv[]) {
   OPENGL_CALL(glUniform1i(width_uniform, width));
   OPENGL_CALL(glUniform1i(height_uniform, height));
   OPENGL_CALL(glViewport(0, 0, width, height));
+
+  {
+    GLuint texture0;
+    GLsizei texture0_width = 100;
+    unsigned char texture0_data[100] = {127};
+    OPENGL_CALL(glGenTextures(1, &texture0));
+    OPENGL_CALL(glActiveTexture(GL_TEXTURE0));
+    OPENGL_CALL(glBindTexture(GL_TEXTURE_1D, texture0));
+    OPENGL_CALL(
+        glTexImage1D(GL_TEXTURE_1D, 0, GL_RED, texture0_width, 0, GL_RED,
+                     GL_UNSIGNED_BYTE, texture0_data));
+    GLint texture0_uniform = glGetUniformLocation(program, "texture0");
+    OPENGL_CALL(glUniform1i(texture0_uniform, 0));
+    OPENGL_CALL(
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+    OPENGL_CALL(
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+    OPENGL_CALL(
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+    OPENGL_CALL(
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+  }
+
+  {
+    GLuint texture1;
+    GLsizei texture1_width = 100;
+    unsigned char texture1_data[100] = {127};
+    OPENGL_CALL(glGenTextures(1, &texture1));
+    OPENGL_CALL(glActiveTexture(GL_TEXTURE1));
+    OPENGL_CALL(glBindTexture(GL_TEXTURE_1D, texture1));
+    OPENGL_CALL(
+        glTexImage1D(GL_TEXTURE_1D, 0, GL_RED, texture1_width, 0, GL_RED,
+                     GL_UNSIGNED_BYTE, texture1_data));
+    GLint texture1_uniform = glGetUniformLocation(program, "texture1");
+    OPENGL_CALL(glUniform1i(texture1_uniform, 1));
+    OPENGL_CALL(
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+    OPENGL_CALL(
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+    OPENGL_CALL(
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+    OPENGL_CALL(
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+  }
 
   glClear(GL_COLOR_BUFFER_BIT);
 
