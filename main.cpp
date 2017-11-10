@@ -2,10 +2,11 @@
 #include <iostream>
 #include <fstream>
 #include <GLFW/glfw3.h>
-#include <cassert>>
+#include <cassert>
 
 namespace gl {
-inline const char* GLGetErrorString(GLenum error) {
+
+inline const char *GLGetErrorString(GLenum error) {
   switch (error) {
     case GL_NO_ERROR:
       return "GL_NO_ERROR";
@@ -43,13 +44,13 @@ void OPENGL_CHECK_ERROR() {
  * \brief Protected OpenGL call.
  * \param func Expression to call.
  */
-#define OPENGL_CALL(func)                                             \
-  {                                                                   \
-    (func);                                                           \
-    OPENGL_CHECK_ERROR();                                             \
+#define OPENGL_CALL(func)                                                      \
+  {                                                                            \
+    (func);                                                                    \
+    OPENGL_CHECK_ERROR();                                                      \
   }
 
-void GlfwErrorCallback(int err, const char* str) {
+void GlfwErrorCallback(int err, const char *str) {
   std::cerr << "Error: [" << err << "] " << str << std::endl;
 }
 
@@ -59,35 +60,40 @@ struct Vertex {
   float x, y;
 };
 Vertex vertices[] = {
-    { -1.f, -1.f },
-    { 1.0f, -1.f },
-    { 1.0f, 1.0f },
-    { -1.f, -1.f },
-    { -1.f, 1.0f },
-    { 1.0f, 1.0f },
+    {-1.f, -1.f},
+    {1.0f, -1.f},
+    {1.0f, 1.0f},
+    {-1.f, -1.f},
+    {-1.f, 1.0f},
+    {1.0f, 1.0f},
 };
 
 // Don't need to change this.
 // The vertex shader only needs to take in the triangle points.
 // No need for point transformations.
-static const char* vertex_shader_text =
+static const char *vertex_shader_text =
+    "#version 120\n"
     "attribute vec2 point; // input to vertex shader\n"
-    "void main()\n"
-    "{\n"
-    "    gl_Position = vec4(point, 0.0, 1.0);\n"
+    "void main() {\n"
+    "  gl_Position = vec4(point, 0.0, 1.0);\n"
     "}\n";
 
 // This is the main part.
-static const char* fragment_shader_text =
+static const char *fragment_shader_text =
+    "#version 120\n"
     "uniform int width;\n"
     "uniform int height;\n"
     "uniform sampler1D texture0;\n"
     "uniform sampler1D texture1;\n"
-    "void main()\n"
-    "{\n"
-    "    // TODO(zhixunt): Calculate pixel index.\n"
-    "    // gl_FragColor = vec4(gl_FragCoord.x / float(width), gl_FragCoord.y / float(height), 0.0, 1.0)\n;"
-    "    gl_FragColor = vec4(texture1D(texture0, 0.0).r + texture1D(texture1, 0.0).r, 0.0, 0.0, 1.0);\n"
+    "void main() {\n"
+    "  // TODO(zhixunt): Calculate pixel index.\n"
+    "  // gl_FragColor = vec4(gl_FragCoord.x / float(width), gl_FragCoord.y / float(height), 0.75, 1.0)\n;"
+    "  gl_FragColor = vec4(\n"
+    "    texture1D(texture0, 0.0).r + texture1D(texture1, 0.0).r,\n"
+    "    0.0,\n"
+    "    0.0,\n"
+    "    1.0\n"
+    "  );\n"
     "}\n";
 
 int main(int argc, char *argv[]) {
@@ -115,13 +121,22 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  std::cout
+      << "OpenGL version: "
+      << glfwGetWindowAttrib(window, GLFW_CONTEXT_VERSION_MAJOR)
+      << "."
+      << glfwGetWindowAttrib(window, GLFW_CONTEXT_VERSION_MINOR)
+      << "."
+      << glfwGetWindowAttrib(window, GLFW_CONTEXT_REVISION)
+      << std::endl;
+
   // Before using any OpenGL API, we must specify a context.
   glfwMakeContextCurrent(window);
 
   // Create the vertex shader.
   GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
   OPENGL_CALL(glShaderSource(vertex_shader, 1, &vertex_shader_text, nullptr));
-  glCompileShader(vertex_shader);
+  OPENGL_CALL(glCompileShader(vertex_shader));
 
   // Create the fragment shader.
   GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -151,54 +166,72 @@ int main(int argc, char *argv[]) {
   OPENGL_CALL(glUniform1i(height_uniform, height));
   OPENGL_CALL(glViewport(0, 0, width, height));
 
+  // Set up the first texture.
+  // https://www.opengl.org/discussion_boards/showthread.php/174926-when-to-use-glActiveTexture
+  // Consider the internal OpenGL texture system as this.
+  //   struct TextureUnit {
+  //     GLuint target_texture_1D;
+  //     GLuint target_texture_2D;
+  //     GLuint target_texture_3D;
+  //     GLuint target_texture_cube;
+  //     ...
+  //   };
+  //   TextureUnit texture_units[GL_MAX_TEXTURE_IMAGE_UNITS];
+  //   GLuint curr_texture_unit; // global state!!!
+  //
+  // Then:
+  //   "glActiveTexture(GL_TEXTURE0);"
+  //     <=>
+  //   "curr_texture_unit = 0;"
+  //
+  //   "glBindTexture(GL_TEXTURE_1D, texture0);"
+  //     <=>
+  //   "texture_units[curr_texture_unit].target_texture_1D = texture0;"
+  //
   {
     GLuint texture0;
     GLsizei texture0_width = 100;
-    unsigned char texture0_data[100] = {127};
+    GLfloat texture0_data[100] = {0.5f};
+
+    // Create a texture.
     OPENGL_CALL(glGenTextures(1, &texture0));
+
+    // See comments above.
     OPENGL_CALL(glActiveTexture(GL_TEXTURE0));
     OPENGL_CALL(glBindTexture(GL_TEXTURE_1D, texture0));
-    OPENGL_CALL(
-        glTexImage1D(GL_TEXTURE_1D, 0, GL_RED, texture0_width, 0, GL_RED,
-                     GL_UNSIGNED_BYTE, texture0_data));
+
+    // Similar to cudaMemcpy.
+    OPENGL_CALL(glTexImage1D(GL_TEXTURE_1D, 0, GL_RED, texture0_width, 0, GL_RED, GL_FLOAT, texture0_data));
+
+    // Bind uniform "texture0" to GL_TEXTURE0.
     GLint texture0_uniform = glGetUniformLocation(program, "texture0");
     OPENGL_CALL(glUniform1i(texture0_uniform, 0));
-    OPENGL_CALL(
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
-    OPENGL_CALL(
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
-    OPENGL_CALL(
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
-    OPENGL_CALL(
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+
+    // TODO(zhixunt): What is this?
+    OPENGL_CALL(glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+    OPENGL_CALL(glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+    OPENGL_CALL(glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+    OPENGL_CALL(glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
   }
 
   {
     GLuint texture1;
     GLsizei texture1_width = 100;
-    unsigned char texture1_data[100] = {127};
+    GLfloat texture1_data[100] = {0.5f};
     OPENGL_CALL(glGenTextures(1, &texture1));
     OPENGL_CALL(glActiveTexture(GL_TEXTURE1));
     OPENGL_CALL(glBindTexture(GL_TEXTURE_1D, texture1));
-    OPENGL_CALL(
-        glTexImage1D(GL_TEXTURE_1D, 0, GL_RED, texture1_width, 0, GL_RED,
-                     GL_UNSIGNED_BYTE, texture1_data));
+    OPENGL_CALL(glTexImage1D(GL_TEXTURE_1D, 0, GL_RED, texture1_width, 0, GL_RED, GL_FLOAT, texture1_data));
     GLint texture1_uniform = glGetUniformLocation(program, "texture1");
     OPENGL_CALL(glUniform1i(texture1_uniform, 1));
-    OPENGL_CALL(
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
-    OPENGL_CALL(
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
-    OPENGL_CALL(
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
-    OPENGL_CALL(
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+    OPENGL_CALL(glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+    OPENGL_CALL(glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+    OPENGL_CALL(glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+    OPENGL_CALL(glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
   }
 
   glClear(GL_COLOR_BUFFER_BIT);
-
   OPENGL_CALL(glDrawArrays(GL_TRIANGLES, 0, 6));
-
   glfwSwapBuffers(window);
 
   while (glfwWindowShouldClose(window) == GLFW_FALSE) {
